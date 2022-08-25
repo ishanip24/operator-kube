@@ -39,6 +39,25 @@ spec:
                 description: Foo is an example field of UserIdentity. Edit useridentity_types.go
                   to remove/update
                 type: string
+              roleRef:
+                description: RoleRef contains information that points to the role
+                  being used
+                properties:
+                  apiGroup:
+                    description: APIGroup is the group for the resource being referenced
+                    type: string
+                  kind:
+                    description: Kind is the type of resource being referenced
+                    type: string
+                  name:
+                    description: Name is the name of resource being referenced
+                    type: string
+                required:
+                - apiGroup
+                - kind
+                - name
+                type: object
+                x-kubernetes-map-type: atomic
             type: object
           status:
             description: UserIdentityStatus defines the observed state of UserIdentity

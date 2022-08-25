@@ -20,9 +20,10 @@ import (
 	"context"
 	"fmt"
 
-	"k8s.io/api/rbac"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/kubernetes/pkg/apis/core"
+
+	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 
 	// "k8s.io/kubernetes/pkg/apis/core"
 	// "k8s.io/kubernetes/pkg/apis/rbac"
@@ -30,7 +31,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	identityv1 "github.com/ishanip24/operator-kube/api/v1"
+	identityv1 "example.com/m/api/v1"
 	// 	identityv1 "k8s.io/apiserver/pkg/storage/value/encrypt/identity"
 )
 
@@ -57,7 +58,7 @@ func (r *UserIdentityReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	_ = log.FromContext(ctx)
 
 	// TODO(user): your logic here
-	var userIdentity UserIdentityReconciler
+	var userIdentity identityv1.UserIdentity
 	if err := r.Get(context.Background(), req.NamespacedName, &userIdentity); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -65,7 +66,7 @@ func (r *UserIdentityReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	user := "jenny"      // pretend we get the name
 	project := "project" // pretend we get the project name
 
-	var serviceAccount core.ServiceAccount
+	var serviceAccount corev1.ServiceAccount
 	serviceAccount.Name = "default"
 	annotations := make(map[string]string, 1)
 	annotations["iam.gke.io/gcp-service-account"] = fmt.Sprintf("%s@%s.iam.gserviceaccount.com", user, project)
@@ -77,13 +78,13 @@ func (r *UserIdentityReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	var clusterRoleBinding rbac.ClusterRoleBinding
+	var clusterRoleBinding rbacv1.ClusterRoleBinding
 	clusterRoleBinding.Name = req.Name
 	clusterRoleBinding.Namespace = req.Namespace
 	_, err = ctrl.CreateOrUpdate(context.Background(), r.Client, &clusterRoleBinding, func() error {
 		clusterRoleBinding.RoleRef = userIdentity.Spec.RoleRef
 
-		clusterRoleBinding.Subjects = []rbac.Subject{
+		clusterRoleBinding.Subjects = []rbacv1.Subject{
 			{
 				Kind: "ServiceAccount",
 				Name: "default",

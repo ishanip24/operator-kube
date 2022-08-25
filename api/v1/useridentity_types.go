@@ -17,11 +17,20 @@ limitations under the License.
 package v1
 
 import (
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+type RoleRef struct {
+	// APIGroup is the group for the resource being referenced
+	APIGroup string `json:"apiGroup" protobuf:"bytes,1,opt,name=apiGroup"`
+	// Kind is the type of resource being referenced
+	Kind string `json:"kind" protobuf:"bytes,2,opt,name=kind"`
+	// Name is the name of resource being referenced
+	Name string `json:"name" protobuf:"bytes,3,opt,name=name"`
+}
 
 // UserIdentitySpec defines the desired state of UserIdentity
 type UserIdentitySpec struct {
@@ -29,7 +38,8 @@ type UserIdentitySpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of UserIdentity. Edit useridentity_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	Foo     string         `json:"foo,omitempty"`
+	RoleRef rbacv1.RoleRef `json:"roleRef,omitempty"`
 }
 
 // UserIdentityStatus defines the observed state of UserIdentity
