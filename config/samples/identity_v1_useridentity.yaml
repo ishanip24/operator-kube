@@ -3,4 +3,8 @@ kind: UserIdentity
 metadata:
   name: useridentity-sample
 spec:
-  # TODO(user): Add fields here
+  # Add fields here
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: event-view

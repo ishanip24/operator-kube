@@ -18,13 +18,20 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
+	"k8s.io/api/rbac"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/kubernetes/pkg/apis/core"
+
+	// "k8s.io/kubernetes/pkg/apis/core"
+	// "k8s.io/kubernetes/pkg/apis/rbac"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	identityv1 "example.com/m/api/v1"
+	identityv1 "github.com/ishanip24/operator-kube/api/v1"
+	// 	identityv1 "k8s.io/apiserver/pkg/storage/value/encrypt/identity"
 )
 
 // UserIdentityReconciler reconciles a UserIdentity object
@@ -50,6 +57,44 @@ func (r *UserIdentityReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	_ = log.FromContext(ctx)
 
 	// TODO(user): your logic here
+	var userIdentity UserIdentityReconciler
+	if err := r.Get(context.Background(), req.NamespacedName, &userIdentity); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	user := "jenny"      // pretend we get the name
+	project := "project" // pretend we get the project name
+
+	var serviceAccount core.ServiceAccount
+	serviceAccount.Name = "default"
+	annotations := make(map[string]string, 1)
+	annotations["iam.gke.io/gcp-service-account"] = fmt.Sprintf("%s@%s.iam.gserviceaccount.com", user, project)
+	serviceAccount.Annotations = annotations
+	_, err := ctrl.CreateOrUpdate(context.Background(), r.Client, &serviceAccount, func() error {
+		return ctrl.SetControllerReference(&userIdentity, &serviceAccount, r.Scheme)
+	})
+	if err != nil {
+		return ctrl.Result{}, nil
+	}
+
+	var clusterRoleBinding rbac.ClusterRoleBinding
+	clusterRoleBinding.Name = req.Name
+	clusterRoleBinding.Namespace = req.Namespace
+	_, err = ctrl.CreateOrUpdate(context.Background(), r.Client, &clusterRoleBinding, func() error {
+		clusterRoleBinding.RoleRef = userIdentity.Spec.RoleRef
+
+		clusterRoleBinding.Subjects = []rbac.Subject{
+			{
+				Kind: "ServiceAccount",
+				Name: "default",
+			},
+		}
+		return ctrl.SetControllerReference(&userIdentity, &clusterRoleBinding, r.Scheme)
+	})
+
+	if err != nil {
+		return ctrl.Result{}, nil
+	}
 
 	return ctrl.Result{}, nil
 }
