@@ -2,7 +2,7 @@ domain: company.org
 layout:
 - go.kubebuilder.io/v3
 projectName: operator-kube
-repo: github.com/ishanip24/operator-kube
+repo: example.com/m
 resources:
 - api:
     crdVersion: v1
@@ -11,6 +11,15 @@ resources:
   domain: company.org
   group: identity
   kind: UserIdentity
-  path: github.com/ishanip24/operator-kube/api/v1
+  path: example.com/m/api/v1
   version: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: company.org
+  group: identity
+  kind: UserIdentityv2
+  path: example.com/m/api/v2
+  version: v2
 version: "3"
