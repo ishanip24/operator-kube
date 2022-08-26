@@ -34,8 +34,8 @@ type UserIdentityv2Spec struct {
 
 // UserIdentityv2Status defines the observed state of UserIdentityv2
 type UserIdentityv2Status struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Conditions is the list of error conditions for this resource
+	Conditions metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -57,6 +57,10 @@ type UserIdentityv2List struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []UserIdentityv2 `json:"items"`
+}
+
+func (o *UserIdentityv2) GetConditions() *metav1.Condition {
+	return &o.Status.Conditions
 }
 
 func init() {

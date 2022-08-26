@@ -31,3 +31,29 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - identity.company.org
+  resources:
+  - useridentityv2s
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - identity.company.org
+  resources:
+  - useridentityv2s/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - identity.company.org
+  resources:
+  - useridentityv2s/status
+  verbs:
+  - get
+  - patch
+  - update
