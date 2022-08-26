@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -51,7 +52,7 @@ func (r *UserIdentityv3Reconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// TODO(user): your logic here
 
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: 10 * time.Minute}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
