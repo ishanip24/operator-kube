@@ -21,7 +21,9 @@ import (
 	"fmt"
 	"time"
 
+	"cloud.google.com/go/pubsub"
 	identityv2 "example.com/m/api/v2"
+	"example.com/m/health"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,6 +40,8 @@ type UserIdentityv2Reconciler struct {
 	Log      logr.Logger
 	Scheme   *runtime.Scheme
 	Recorder record.EventRecorder
+	health.HealthCheck
+	PubsubClient *pubsub.Client
 }
 
 const (
@@ -107,12 +111,14 @@ func (r *UserIdentityv2Reconciler) SetConditionFail(err error, userIdentity iden
 		Reason:  "Update failed",
 		Message: err.Error(),
 	}
+	r.Recorder.Event(&userIdentity, corev1.EventTypeWarning, string(condition.Reason), condition.Message)
 	if conditions == &condition {
 		if err := r.Status().Update(context.Background(), &userIdentity); err != nil {
 			log.Error(err, "Set conditions failed")
-			// r.Recorder.Event(userIdentity, corev1.EventTypeWarning, string(UpdateFailed), "Failed to update resource status")
+			r.Recorder.Event(userIdentity.DeepCopyObject(), corev1.EventTypeWarning, string(UpdateFailed), "Failed to update resource status")
 			return err
 		}
 	}
+	r.Recorder.Event(&userIdentity, corev1.EventTypeNormal, string(condition.Reason), condition.Message)
 	return nil
 }
