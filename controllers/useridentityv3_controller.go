@@ -98,8 +98,8 @@ func (r *UserIdentityv3Reconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return &u, err
 	}
 
-	// Apply resources
-	for i := range userIdentity.Spec.Foo {
+	// Apply resources for ConcurrencyPolicy
+	for i := range userIdentity.Spec.ConcurrencyPolicy {
 		if err := func() error {
 			rendered, err := renderTemplate(i, user, project)
 			if err != nil {
