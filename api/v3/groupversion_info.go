@@ -15,8 +15,8 @@ limitations under the License.
 */
 
 // Package v3 contains API Schema definitions for the identity v3 API group
-//+kubebuilder:object:generate=true
-//+groupName=identity.company.org
+// +kubebuilder:object:generate=true
+// +groupName=identity.company.org
 package v3
 
 import (
