@@ -22,4 +22,17 @@ resources:
   kind: UserIdentityv2
   path: example.com/m/api/v2
   version: v2
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: company.org
+  group: identity
+  kind: UserIdentityv3
+  path: example.com/m/api/v3
+  version: v3
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
 version: "3"

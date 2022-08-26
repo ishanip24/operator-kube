@@ -1,0 +1,6 @@
+apiVersion: identity.company.org/v3
+kind: UserIdentityv3
+metadata:
+  name: useridentityv3-sample
+spec:
+  # TODO(user): Add fields here

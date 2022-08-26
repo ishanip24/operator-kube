@@ -34,6 +34,7 @@ import (
 	identityv1 "k8s.io/api/core/v1"
 
 	identityv2 "example.com/m/api/v2"
+	identityv3 "example.com/m/api/v3"
 	"example.com/m/controllers"
 	//+kubebuilder:scaffold:imports
 )
@@ -48,6 +49,7 @@ func init() {
 
 	utilruntime.Must(identityv1.AddToScheme(scheme))
 	utilruntime.Must(identityv2.AddToScheme(scheme))
+	utilruntime.Must(identityv3.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -104,6 +106,17 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "UserIdentityv2")
+		os.Exit(1)
+	}
+	if err = (&controllers.UserIdentityv3Reconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "UserIdentityv3")
+		os.Exit(1)
+	}
+	if err = (&identityv3.UserIdentityv3{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "UserIdentityv3")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
