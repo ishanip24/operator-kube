@@ -15,8 +15,8 @@ limitations under the License.
 */
 
 // Package v2 contains API Schema definitions for the identity v2 API group
-//+kubebuilder:object:generate=true
-//+groupName=identity.company.org
+// +kubebuilder:object:generate=true
+// +groupName=identity.company.org
 package v2
 
 import (

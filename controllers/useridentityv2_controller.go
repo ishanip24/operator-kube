@@ -26,16 +26,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	// v1 "k8s.io/api/core/v1"
-	// rbacv1 "k8s.io/api/rbac/v1"
-
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	// "sigs.k8s.io/controller-runtime/pkg/event"
-	// "sigs.k8s.io/controller-runtime/pkg/handler"
-	// "sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 // UserIdentityv2Reconciler reconciles a UserIdentityv2 object
@@ -113,7 +107,7 @@ func (r *UserIdentityv2Reconciler) SetConditionFail(err error, userIdentity iden
 		Reason:  "Update failed",
 		Message: err.Error(),
 	}
-	if conditions.DeepCopyInto(condition) {
+	if conditions == &condition {
 		if err := r.Status().Update(context.Background(), &userIdentity); err != nil {
 			log.Error(err, "Set conditions failed")
 			// r.Recorder.Event(userIdentity, corev1.EventTypeWarning, string(UpdateFailed), "Failed to update resource status")
