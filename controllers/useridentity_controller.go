@@ -25,14 +25,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 
-	// "k8s.io/kubernetes/pkg/apis/core"
-	// "k8s.io/kubernetes/pkg/apis/rbac"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	identityv1 "example.com/m/api/v1"
-	// 	identityv1 "k8s.io/apiserver/pkg/storage/value/encrypt/identity"
 )
 
 // UserIdentityReconciler reconciles a UserIdentity object
@@ -47,11 +44,6 @@ type UserIdentityReconciler struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the UserIdentity object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.12.2/pkg/reconcile
 func (r *UserIdentityReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

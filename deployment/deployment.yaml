@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: pubsubpuller
+    tier: backend
+  name: pubsubpuller
+  namespace: districts-admin-reports
+spec:
+  selector:
+    matchLabels:
+      app: pubsubpuller
+      tier: backend
+  template:
+    metadata:
+      labels:
+        app: pubsubpuller
+        tier: backend
+    spec:
+      automountServiceAccountToken: true
+      containers:
+        - args:
+            - pull-topic
+            - -forever
+        - image: noidea

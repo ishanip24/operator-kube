@@ -17,18 +17,21 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
+	"fmt"
+	"log"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
+	"cloud.google.com/go/pubsub"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	identityv1 "k8s.io/api/core/v1"
@@ -40,8 +43,10 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	scheme             = runtime.NewScheme()
+	setupLog           = ctrl.Log.WithName("setup")
+	pubsubTopic        = "district_create_report_ephemeral_record_event"
+	pubsubSubscription = "pull-test-results"
 )
 
 func init() {
@@ -77,17 +82,6 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "95f0db32.company.org",
-		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
-		// when the Manager ends. This requires the binary to immediately end when the
-		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
-		// speeds up voluntary leader transitions as the new leader don't have to wait
-		// LeaseDuration time first.
-		//
-		// In the default scaffold provided, the program ends immediately after
-		// the manager stops, so would be fine to enable this option. However,
-		// if you are doing or is intended to do any operation such as perform cleanups
-		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -101,38 +95,65 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "UserIdentity")
 		os.Exit(1)
 	}
-	if err = (&controllers.UserIdentityv2Reconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "UserIdentityv2")
-		os.Exit(1)
-	}
-	if err = (&controllers.UserIdentityv3Reconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "UserIdentityv3")
-		os.Exit(1)
-	}
-	if err = (&identityv3.UserIdentityv3{}).SetupWebhookWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create webhook", "webhook", "UserIdentityv3")
-		os.Exit(1)
-	}
-	//+kubebuilder:scaffold:builder
 
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up health check")
-		os.Exit(1)
+	ctx := context.Background()
+	client, err := pubsub.NewClient(ctx, pubsubTopic)
+	if err != nil {
+		log.Fatal(err)
 	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
+	// Publish "hello world" on pubsubTopic
+	topic := client.Topic(pubsubTopic)
+	res := topic.Publish(ctx, &pubsub.Message{
+		Data: []byte("hello world"),
+	})
+	// The publish happens asynchronously.
+	msgID, err := res.Get(ctx)
+	if err != nil {
+		log.Fatal(err)
 	}
+	setupLog.Info("messageID: " + msgID)
 
-	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
+	// Use a callback to receive messages via pubsubSubscription.
+	sub := client.Subscription(pubsubSubscription) // create subscription
+	err = sub.Receive(ctx, func(ctx context.Context, msg *pubsub.Message) {
+		fmt.Println(msg.Data)
+		msg.Ack() // Acknowledge that we've consumed the message.
+	})
+	if err != nil {
+		log.Println(err)
 	}
+	// if err = (&controllers.UserIdentityv2Reconciler{
+	// 	Client: mgr.GetClient(),
+	// 	Scheme: mgr.GetScheme(),
+	// }).SetupWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create controller", "controller", "UserIdentityv2")
+	// 	os.Exit(1)
+	// }
+	// if err = (&controllers.UserIdentityv3Reconciler{
+	// 	Client: mgr.GetClient(),
+	// 	Scheme: mgr.GetScheme(),
+	// }).SetupWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create controller", "controller", "UserIdentityv3")
+	// 	os.Exit(1)
+	// }
+	// if err = (&identityv3.UserIdentityv3{}).SetupWebhookWithManager(mgr); err != nil {
+	// 	setupLog.Error(err, "unable to create webhook", "webhook", "UserIdentityv3")
+	// 	os.Exit(1)
+	// }
+	// //+kubebuilder:scaffold:builder
+
+	// if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+	// 	setupLog.Error(err, "unable to set up health check")
+	// 	os.Exit(1)
+	// }
+	// if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	// 	setupLog.Error(err, "unable to set up ready check")
+	// 	os.Exit(1)
+	// }
+
+	// setupLog.Info("starting manager")
+	// if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	// 	setupLog.Error(err, "problem running manager")
+	// 	os.Exit(1)
+	// }
 }
