@@ -22,7 +22,11 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 
 	"context"
+	"flag"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"cloud.google.com/go/pubsub"
@@ -126,10 +130,10 @@ func init() {
 
 func main() {
 	ctx := context.Background()
-	logger, _ := zap.NewProduction()
+	logger, err := zap.NewProduction()
 	pubSubTopic := "pull-topic"
 	pubSubID := pubSubTopic + "_job_runner"
-	// subName := "pull-test-results"
+	subName := "pull-test-results"
 	client, _ := pubsub.NewClient(ctx, "khan-academy")
 	clientSet, clientSetErr := NewKubeClient()
 	if clientSetErr != nil {
@@ -141,7 +145,18 @@ func main() {
 		TestServer: pstest.NewServer(),
 	}
 
-	err := pullMsgsAndCreateKubeJobs(ctx, logger, clientSet, pubSubInfo, pubSubID)
+	var forever bool
+	flag.BoolVar(&forever,
+		"forever",
+		false,
+		"Keep pulling from Pull Test Results request pubsub topic forever",
+	)
+
+	if forever {
+		err = pullForever(ctx, logger, clientSet, pubSubInfo, pubSubID, subName)
+	} else {
+		err = pullMsgsAndCreateKubeJobs(ctx, logger, clientSet, pubSubInfo, pubSubID)
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -221,6 +236,76 @@ func pullMsgsAndCreateKubeJobs(
 	}
 	logger.Info("Done pulling for now", zap.String("PubSubID", subID))
 	return nil
+}
+
+func pullForever(
+	ctx context.Context,
+	logger *zap.Logger,
+	clientSet *coreClient.Clientset,
+	pubSubInfo PubSubInfo,
+	pubSubID string,
+	subID string,
+) error {
+	// Go signal notification works by sending `os.Signal`
+	// values on a channel. We'll create a channel to
+	// receive these notifications (we'll also make one to
+	// notify us when the program can exit).
+	sigs := make(chan os.Signal, 2)
+	done := make(chan bool, 1)
+
+	// Tickers use a similar mechanism to timers: a
+	// channel that is sent values. Here we'll use the
+	// `range` builtin on the channel to iterate over
+	// the values as they arrive every 60s.
+	ticker := time.NewTicker(time.Second * 60)
+	var pullErr error
+
+	go func() {
+		for t := range ticker.C {
+			logger.Info("Tick happened", zap.Time("tick time", t))
+			err := pullMsgsAndCreateKubeJobs(
+				ctx,
+				logger,
+				clientSet,
+				pubSubInfo,
+				pubSubID,
+			)
+			if err != nil {
+				pullErr = err
+				logger.Error("unable to pull from pubsub topic", zap.Error(err))
+				ticker.Stop()
+			}
+		}
+	}()
+
+	// `signal.Notify` registers the given channel to
+	// receive notifications of the specified signals.
+	signal.Notify(sigs,
+		os.Interrupt,    // interrupt is syscall.SIGINT, Ctrl+C
+		syscall.SIGQUIT, // Ctrl-\
+		syscall.SIGHUP,  // "terminal is disconnected"
+		syscall.SIGTERM, // "the normal way to politely ask a program to terminate"
+	)
+	// This goroutine executes a blocking receive for
+	// signals. When it gets one it'll print it out
+	// and then notify the program that it can finish.
+	go func() {
+		sig := <-sigs
+		logger.Info("received os Signal", zap.Any("signal", sig))
+
+		// Tickers can be stopped like timers.
+		ticker.Stop()
+		logger.Info("Ticker stopped")
+
+		done <- true
+	}()
+	// The program will wait here until it gets the
+	// expected signal (as indicated by the goroutine
+	// above sending a value on `done`) and then exit.
+	logger.Info("awaiting signals")
+	<-done
+	logger.Info("exiting")
+	return pullErr
 }
 
 // Old Main Code
