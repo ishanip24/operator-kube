@@ -37,7 +37,7 @@ import (
 	//+kubebuilder:scaffold:imports
 )
 
-// These tests use Ginkgo (BDD-style Go testing framework). Refer to
+// These tests use Ginkgo v2 (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
@@ -46,6 +46,8 @@ var (
 	testEnv   *envtest.Environment
 )
 
+// QUESTION: this fails
+// controller-runtime module uses Gingko v1 which might cause this error
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
 

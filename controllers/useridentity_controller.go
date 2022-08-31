@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/runtime"
 
 	corev1 "k8s.io/api/core/v1"
@@ -36,6 +37,7 @@ import (
 type UserIdentityReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	Log    logr.Logger
 }
 
 //+kubebuilder:rbac:groups=identity.company.org,resources=useridentities,verbs=get;list;watch;create;update;patch;delete
@@ -49,13 +51,12 @@ type UserIdentityReconciler struct {
 func (r *UserIdentityReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	_ = log.FromContext(ctx)
 
-	// TODO(user): your logic here
 	var userIdentity identityv1.UserIdentity
 	if err := r.Get(context.Background(), req.NamespacedName, &userIdentity); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	user := "jenny"      // pretend we get the name
+	user := "ishani"     // pretend we get the name
 	project := "project" // pretend we get the project name
 
 	var serviceAccount corev1.ServiceAccount

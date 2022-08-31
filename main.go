@@ -21,37 +21,29 @@ import (
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
 
-	"context"
 	"flag"
-	"log"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"cloud.google.com/go/pubsub"
 	"cloud.google.com/go/pubsub/pstest"
-	"github.com/cenkalti/backoff"
+	"github.com/go-logr/logr"
 	"github.com/golang/protobuf/ptypes/timestamp"
-	"github.com/pkg/errors"
-	"go.uber.org/zap"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/runtime/protoimpl"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	coreClient "k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	restClient "k8s.io/client-go/rest"
-	cmdClient "k8s.io/client-go/tools/clientcmd"
 	ctrl "sigs.k8s.io/controller-runtime"
 
 	identityv1 "k8s.io/api/core/v1"
 
 	identityv2 "example.com/m/api/v2"
 	identityv3 "example.com/m/api/v3"
+
+	"example.com/m/controllers"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -129,184 +121,244 @@ func init() {
 }
 
 func main() {
-	ctx := context.Background()
-	logger, err := zap.NewProduction()
-	pubSubTopic := "pull-topic"
-	pubSubID := pubSubTopic + "_job_runner"
-	subName := "pull-test-results"
-	client, _ := pubsub.NewClient(ctx, "khan-academy")
-	clientSet, clientSetErr := NewKubeClient()
-	if clientSetErr != nil {
-		log.Fatal(clientSetErr)
-	}
-	pubSubInfo := PubSubInfo{
-		Client:     client,
-		SecretKey:  "secretkey",
-		TestServer: pstest.NewServer(),
-	}
+	var metricsAddr string
+	var enableLeaderElection bool
+	flag.StringVar(&metricsAddr, "metrics-addr", ":8080", "The address the metric endpoint binds to.")
+	flag.BoolVar(&enableLeaderElection, "enable-leader-election", false,
+		"Enable leader election for controller manager. "+
+			"Enabling this will ensure there is only one active controller manager.")
+	flag.Parse()
 
-	var forever bool
-	flag.BoolVar(&forever,
-		"forever",
-		false,
-		"Keep pulling from Pull Test Results request pubsub topic forever",
-	)
+	ctrl.SetLogger(logr.Logger{})
 
-	if forever {
-		err = pullForever(ctx, logger, clientSet, pubSubInfo, pubSubID, subName)
-	} else {
-		err = pullMsgsAndCreateKubeJobs(ctx, logger, clientSet, pubSubInfo, pubSubID)
-	}
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func NewKubeClient() (*coreClient.Clientset, error) {
-	config, err := restClient.InClusterConfig()
-	if err != nil {
-		kubeconfig := cmdClient.NewDefaultClientConfigLoadingRules().GetDefaultFilename()
-		config, err = cmdClient.BuildConfigFromFlags("", kubeconfig)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return coreClient.NewForConfig(config)
-}
-
-func pullMsgsAndCreateKubeJobs(
-	timeoutctx context.Context,
-	logger *zap.Logger,
-	clientSet *coreClient.Clientset,
-	pubSubInfo PubSubInfo,
-	subID string,
-) error {
-	logger.Info("Beginning pull", zap.String("PubSubID", subID))
-	sub := pubSubInfo.Client.Subscription(subID)
-
-	// Receive messages for 60 seconds.
-	timeoutctx, cancel := context.WithTimeout(timeoutctx, 60*time.Second)
-	defer cancel()
-
-	// Create a channel to handle messages to as they come in.
-	cm := make(chan *pubsub.Message)
-	defer close(cm)
-	// Handle individual messages in a goroutine.
-	go func() {
-		for msg := range cm {
-			pullTestResultsRequest := &PullTestResultEvent{}
-			unmarhsallErr := proto.Unmarshal(msg.Data, pullTestResultsRequest)
-			if unmarhsallErr != nil {
-				logger.Error(
-					"unable to unmarshall protobuf",
-					zap.Error(unmarhsallErr),
-					zap.String("data", string(msg.Data)),
-				)
-			}
-			logger.Info("Got message", zap.Any("record", pullTestResultsRequest))
-
-			expBackoff := backoff.NewExponentialBackOff()
-
-			expBackoff.InitialInterval = 30 * time.Second
-			expBackoff.Multiplier = 2.0
-			expBackoff.MaxInterval = 5 * time.Minute
-			expBackoff.MaxElapsedTime = 0
-			expBackoff.Reset()
-
-			// TODO: error checking
-			msg.Ack()
-		}
-	}()
-	sub.ReceiveSettings.Synchronous = true
-	// MaxOutstandingMessages is the maximum number of unprocessed messages the
-	// client will pull from the server before pausing.
-	//
-	// This is only guaranteed when ReceiveSettings.Synchronous is set to true.
-	// When Synchronous is set to false, the StreamingPull RPC is used which
-	// can pull a single large batch of messages at once that is greater than
-	// MaxOustandingMessages before pausing. For more info, see
-	// https://cloud.google.com/pubsub/docs/pull#streamingpull_dealing_with_large_backlogs_of_small_messages.
-	sub.ReceiveSettings.MaxOutstandingMessages = 10
-	// Receive blocks until the context is cancelled or a receive error occurs.
-	err := sub.Receive(timeoutctx, func(ctx context.Context, msg *pubsub.Message) {
-		cm <- msg
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+		Scheme:             scheme,
+		MetricsBindAddress: metricsAddr,
+		Port:               9443,
+		// LeaderElection:     enableLeaderElection,
+		// LeaderElectionID:   "95f0db32.company.org",
 	})
 	if err != nil {
-		return errors.Wrap(err, "pubsub receive err")
+		setupLog.Error(err, "unable to start manager")
+		os.Exit(1)
 	}
-	logger.Info("Done pulling for now", zap.String("PubSubID", subID))
-	return nil
+
+	if err = (&controllers.UserIdentityReconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("UserIdentity"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "UserIdentity")
+		os.Exit(1)
+	}
+	if err = (&controllers.UserIdentityv2Reconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("UserIdentityV2"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "UserIdentityV2")
+		os.Exit(1)
+	}
+	if err = (&controllers.UserIdentityv3Reconciler{
+		Client: mgr.GetClient(),
+		Log:    ctrl.Log.WithName("controllers").WithName("UserIdentityV3"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "UserIdentityV3")
+		os.Exit(1)
+	}
+	if err = (&identityv3.UserIdentityv3{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "UserIdentityV3")
+		os.Exit(1)
+	}
+	// +kubebuilder:scaffold:builder
+
+	setupLog.Info("starting manager")
+	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+		setupLog.Error(err, "problem running manager")
+		os.Exit(1)
+	}
 }
 
-func pullForever(
-	ctx context.Context,
-	logger *zap.Logger,
-	clientSet *coreClient.Clientset,
-	pubSubInfo PubSubInfo,
-	pubSubID string,
-	subID string,
-) error {
-	// Go signal notification works by sending `os.Signal`
-	// values on a channel. We'll create a channel to
-	// receive these notifications (we'll also make one to
-	// notify us when the program can exit).
-	sigs := make(chan os.Signal, 2)
-	done := make(chan bool, 1)
+// func main() {
+// 	ctx := context.Background()
+// 	logger, err := zap.NewProduction()
+// 	pubSubTopic := "pull-topic"
+// 	pubSubID := pubSubTopic + "_job_runner"
+// 	subName := "pull-test-results"
+// 	client, _ := pubsub.NewClient(ctx, "khan-academy")
+// 	clientSet, clientSetErr := NewKubeClient()
+// 	if clientSetErr != nil {
+// 		log.Fatal(clientSetErr)
+// 	}
+// 	pubSubInfo := PubSubInfo{
+// 		Client:     client,
+// 		SecretKey:  "secretkey",
+// 		TestServer: pstest.NewServer(),
+// 	}
 
-	// Tickers use a similar mechanism to timers: a
-	// channel that is sent values. Here we'll use the
-	// `range` builtin on the channel to iterate over
-	// the values as they arrive every 60s.
-	ticker := time.NewTicker(time.Second * 60)
-	var pullErr error
+// 	var forever bool
+// 	flag.BoolVar(&forever,
+// 		"forever",
+// 		false,
+// 		"Keep pulling from Pull Test Results request pubsub topic forever",
+// 	)
 
-	go func() {
-		for t := range ticker.C {
-			logger.Info("Tick happened", zap.Time("tick time", t))
-			err := pullMsgsAndCreateKubeJobs(
-				ctx,
-				logger,
-				clientSet,
-				pubSubInfo,
-				pubSubID,
-			)
-			if err != nil {
-				pullErr = err
-				logger.Error("unable to pull from pubsub topic", zap.Error(err))
-				ticker.Stop()
-			}
-		}
-	}()
+// 	if forever {
+// 		err = pullForever(ctx, logger, clientSet, pubSubInfo, pubSubID, subName)
+// 	} else {
+// 		err = pullMsgsAndCreateKubeJobs(ctx, logger, clientSet, pubSubInfo, pubSubID)
+// 	}
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+// }
 
-	// `signal.Notify` registers the given channel to
-	// receive notifications of the specified signals.
-	signal.Notify(sigs,
-		os.Interrupt,    // interrupt is syscall.SIGINT, Ctrl+C
-		syscall.SIGQUIT, // Ctrl-\
-		syscall.SIGHUP,  // "terminal is disconnected"
-		syscall.SIGTERM, // "the normal way to politely ask a program to terminate"
-	)
-	// This goroutine executes a blocking receive for
-	// signals. When it gets one it'll print it out
-	// and then notify the program that it can finish.
-	go func() {
-		sig := <-sigs
-		logger.Info("received os Signal", zap.Any("signal", sig))
+// func NewKubeClient() (*coreClient.Clientset, error) {
+// 	config, err := restClient.InClusterConfig()
+// 	if err != nil {
+// 		kubeconfig := cmdClient.NewDefaultClientConfigLoadingRules().GetDefaultFilename()
+// 		config, err = cmdClient.BuildConfigFromFlags("", kubeconfig)
+// 		if err != nil {
+// 			return nil, err
+// 		}
+// 	}
+// 	return coreClient.NewForConfig(config)
+// }
 
-		// Tickers can be stopped like timers.
-		ticker.Stop()
-		logger.Info("Ticker stopped")
+// func pullMsgsAndCreateKubeJobs(
+// 	timeoutctx context.Context,
+// 	logger *zap.Logger,
+// 	clientSet *coreClient.Clientset,
+// 	pubSubInfo PubSubInfo,
+// 	subID string,
+// ) error {
+// 	logger.Info("Beginning pull", zap.String("PubSubID", subID))
+// 	sub := pubSubInfo.Client.Subscription(subID)
 
-		done <- true
-	}()
-	// The program will wait here until it gets the
-	// expected signal (as indicated by the goroutine
-	// above sending a value on `done`) and then exit.
-	logger.Info("awaiting signals")
-	<-done
-	logger.Info("exiting")
-	return pullErr
-}
+// 	// Receive messages for 60 seconds.
+// 	timeoutctx, cancel := context.WithTimeout(timeoutctx, 60*time.Second)
+// 	defer cancel()
+
+// 	// Create a channel to handle messages to as they come in.
+// 	cm := make(chan *pubsub.Message)
+// 	defer close(cm)
+// 	// Handle individual messages in a goroutine.
+// 	go func() {
+// 		for msg := range cm {
+// 			pullTestResultsRequest := &PullTestResultEvent{}
+// 			unmarhsallErr := proto.Unmarshal(msg.Data, pullTestResultsRequest)
+// 			if unmarhsallErr != nil {
+// 				logger.Error(
+// 					"unable to unmarshall protobuf",
+// 					zap.Error(unmarhsallErr),
+// 					zap.String("data", string(msg.Data)),
+// 				)
+// 			}
+// 			logger.Info("Got message", zap.Any("record", pullTestResultsRequest))
+
+// 			expBackoff := backoff.NewExponentialBackOff()
+
+// 			expBackoff.InitialInterval = 30 * time.Second
+// 			expBackoff.Multiplier = 2.0
+// 			expBackoff.MaxInterval = 5 * time.Minute
+// 			expBackoff.MaxElapsedTime = 0
+// 			expBackoff.Reset()
+
+// 			// TODO: error checking
+// 			msg.Ack()
+// 		}
+// 	}()
+// 	sub.ReceiveSettings.Synchronous = true
+// 	// MaxOutstandingMessages is the maximum number of unprocessed messages the
+// 	// client will pull from the server before pausing.
+// 	//
+// 	// This is only guaranteed when ReceiveSettings.Synchronous is set to true.
+// 	// When Synchronous is set to false, the StreamingPull RPC is used which
+// 	// can pull a single large batch of messages at once that is greater than
+// 	// MaxOustandingMessages before pausing. For more info, see
+// 	// https://cloud.google.com/pubsub/docs/pull#streamingpull_dealing_with_large_backlogs_of_small_messages.
+// 	sub.ReceiveSettings.MaxOutstandingMessages = 10
+// 	// Receive blocks until the context is cancelled or a receive error occurs.
+// 	err := sub.Receive(timeoutctx, func(ctx context.Context, msg *pubsub.Message) {
+// 		cm <- msg
+// 	})
+// 	if err != nil {
+// 		return errors.Wrap(err, "pubsub receive err")
+// 	}
+// 	logger.Info("Done pulling for now", zap.String("PubSubID", subID))
+// 	return nil
+// }
+
+// func pullForever(
+// 	ctx context.Context,
+// 	logger *zap.Logger,
+// 	clientSet *coreClient.Clientset,
+// 	pubSubInfo PubSubInfo,
+// 	pubSubID string,
+// 	subID string,
+// ) error {
+// 	// Go signal notification works by sending `os.Signal`
+// 	// values on a channel. We'll create a channel to
+// 	// receive these notifications (we'll also make one to
+// 	// notify us when the program can exit).
+// 	sigs := make(chan os.Signal, 2)
+// 	done := make(chan bool, 1)
+
+// 	// Tickers use a similar mechanism to timers: a
+// 	// channel that is sent values. Here we'll use the
+// 	// `range` builtin on the channel to iterate over
+// 	// the values as they arrive every 60s.
+// 	ticker := time.NewTicker(time.Second * 60)
+// 	var pullErr error
+
+// 	go func() {
+// 		for t := range ticker.C {
+// 			logger.Info("Tick happened", zap.Time("tick time", t))
+// 			err := pullMsgsAndCreateKubeJobs(
+// 				ctx,
+// 				logger,
+// 				clientSet,
+// 				pubSubInfo,
+// 				pubSubID,
+// 			)
+// 			if err != nil {
+// 				pullErr = err
+// 				logger.Error("unable to pull from pubsub topic", zap.Error(err))
+// 				ticker.Stop()
+// 			}
+// 		}
+// 	}()
+
+// 	// `signal.Notify` registers the given channel to
+// 	// receive notifications of the specified signals.
+// 	signal.Notify(sigs,
+// 		os.Interrupt,    // interrupt is syscall.SIGINT, Ctrl+C
+// 		syscall.SIGQUIT, // Ctrl-\
+// 		syscall.SIGHUP,  // "terminal is disconnected"
+// 		syscall.SIGTERM, // "the normal way to politely ask a program to terminate"
+// 	)
+// 	// This goroutine executes a blocking receive for
+// 	// signals. When it gets one it'll print it out
+// 	// and then notify the program that it can finish.
+// 	go func() {
+// 		sig := <-sigs
+// 		logger.Info("received os Signal", zap.Any("signal", sig))
+
+// 		// Tickers can be stopped like timers.
+// 		ticker.Stop()
+// 		logger.Info("Ticker stopped")
+
+// 		done <- true
+// 	}()
+// 	// The program will wait here until it gets the
+// 	// expected signal (as indicated by the goroutine
+// 	// above sending a value on `done`) and then exit.
+// 	logger.Info("awaiting signals")
+// 	<-done
+// 	logger.Info("exiting")
+// 	return pullErr
+// }
 
 // Old Main Code
 // var metricsAddr string

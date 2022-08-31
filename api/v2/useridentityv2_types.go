@@ -17,6 +17,7 @@ limitations under the License.
 package v2
 
 import (
+	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -28,14 +29,15 @@ type UserIdentityv2Spec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of UserIdentityv2. Edit useridentityv2_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// RoleRef is the target ClusterRole reference
+	// +kubebuilder:printcolumn
+	RoleRef rbacv1.RoleRef `json:"roleRef,omitempty"`
 }
 
 // UserIdentityv2Status defines the observed state of UserIdentityv2
 type UserIdentityv2Status struct {
 	// Conditions is the list of error conditions for this resource
-	Conditions metav1.Condition `json:"conditions,omitempty"`
+	Conditions *[]metav1.Condition `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -59,8 +61,8 @@ type UserIdentityv2List struct {
 	Items           []UserIdentityv2 `json:"items"`
 }
 
-func (o *UserIdentityv2) GetConditions() *metav1.Condition {
-	return &o.Status.Conditions
+func (o *UserIdentityv2) GetConditions() *[]metav1.Condition {
+	return o.Status.Conditions
 }
 
 func init() {

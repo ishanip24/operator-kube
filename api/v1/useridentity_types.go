@@ -37,8 +37,7 @@ type UserIdentitySpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of UserIdentity. Edit useridentity_types.go to remove/update
-	Foo     string         `json:"foo,omitempty"`
+	// RoleRef is the target ClusterRole reference
 	RoleRef rbacv1.RoleRef `json:"roleRef,omitempty"`
 }
 

@@ -26,6 +26,8 @@ import (
 	"example.com/m/health"
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -64,14 +66,18 @@ const (
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.12.2/pkg/reconcile
 func (r *UserIdentityv2Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
+	defer cancel()
 	log := r.Log.WithValues("useridentity", req.NamespacedName)
+
+	r.HealthCheck.Trigger()
 
 	var userIdentity identityv2.UserIdentityv2
 	if err := r.Get(ctx, req.NamespacedName, &userIdentity); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-	user := "ishani"  // pretend we get the name
-	project := "proj" // pretend we get the project name
+	user := "ishani"     // pretend we get the name
+	project := "project" // pretend we get the project name
 
 	log.V(10).Info(fmt.Sprintf("Create Resources for User:%s, Project:%s", user, project))
 
@@ -85,12 +91,26 @@ func (r *UserIdentityv2Reconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	})
 	if err != nil {
 		log.Error(err, fmt.Sprintf("Error create ServiceAccount for user: %s, project: %s", user, project))
-		_ = r.SetConditionFail(err, userIdentity, log)
+		_ = r.SetConditionFail(ctx, err, userIdentity, log)
 		return ctrl.Result{}, nil
 	}
 
 	// Create Service Account
 	log.V(10).Info(fmt.Sprintf("Create ServiceAccount for User:%s, Project:%s finished", user, project))
+	var clusterRoleBinding rbacv1.ClusterRoleBinding
+	clusterRoleBinding.Name = req.Name
+	clusterRoleBinding.Namespace = req.Namespace
+	_, err = ctrl.CreateOrUpdate(ctx, r.Client, &clusterRoleBinding, func() error {
+		clusterRoleBinding.RoleRef = userIdentity.Spec.RoleRef
+
+		clusterRoleBinding.Subjects = []rbacv1.Subject{
+			{
+				Kind: "ServiceAccount",
+				Name: "default",
+			},
+		}
+		return ctrl.SetControllerReference(&userIdentity, &clusterRoleBinding, r.Scheme)
+	})
 
 	return ctrl.Result{RequeueAfter: 10 * time.Minute}, nil
 }
@@ -102,23 +122,16 @@ func (r *UserIdentityv2Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// create a func to wrap the logic
-func (r *UserIdentityv2Reconciler) SetConditionFail(err error, userIdentity identityv2.UserIdentityv2, log logr.Logger) error {
+// exec if service account creation fails
+func (r *UserIdentityv2Reconciler) SetConditionFail(ctx context.Context, err error, userIdentity identityv2.UserIdentityv2, log logr.Logger) error {
 	conditions := userIdentity.GetConditions()
-	condition := metav1.Condition{
-		Type:    "Ready",
-		Status:  metav1.ConditionFalse,
-		Reason:  "Update failed",
-		Message: err.Error(),
-	}
-	r.Recorder.Event(&userIdentity, corev1.EventTypeWarning, string(condition.Reason), condition.Message)
-	if conditions == &condition {
-		if err := r.Status().Update(context.Background(), &userIdentity); err != nil {
+	r.Recorder.Event(&userIdentity, corev1.EventTypeWarning, string("Failed"), err.Error())
+	if meta.IsStatusConditionPresentAndEqual(*conditions, "Ready", metav1.ConditionFalse) {
+		if err := r.Status().Update(ctx, &userIdentity); err != nil {
 			log.Error(err, "Set conditions failed")
-			r.Recorder.Event(userIdentity.DeepCopyObject(), corev1.EventTypeWarning, string(UpdateFailed), "Failed to update resource status")
+			r.Recorder.Event(&userIdentity, corev1.EventTypeWarning, string(UpdateFailed), "Failed to update resource status")
 			return err
 		}
 	}
-	r.Recorder.Event(&userIdentity, corev1.EventTypeNormal, string(condition.Reason), condition.Message)
 	return nil
 }

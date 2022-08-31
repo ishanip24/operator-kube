@@ -42,6 +42,7 @@ func CreateUserEvents(client client.Client, subscription *pubsub.Subscription, u
 	}
 }
 
+// keep recieving pubsub messages until there are none left
 func (t *UserEvents) Run() {
 	for {
 		select {
