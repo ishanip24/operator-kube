@@ -1,19 +1,3 @@
-/*
-Copyright 2022 pc.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package controllers
 
 import (
@@ -69,8 +53,6 @@ type Param struct {
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.12.2/pkg/reconcile
 func (r *UserIdentityv3Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
@@ -127,6 +109,7 @@ func (r *UserIdentityv3Reconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			if err != nil {
 				return err
 			}
+			// TODO(user): your logic here
 
 			var existing unstructured.Unstructured
 			existing.SetGroupVersionKind(rendered.GroupVersionKind())
@@ -184,7 +167,7 @@ func (r *UserIdentityv3Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *UserIdentityv3Reconciler) SetConditionFail(ctx context.Context, err error, userIdentity identityv3.UserIdentityv3, log logr.Logger) error {
 	conditions := userIdentity.GetConditions()
 	r.Recorder.Event(&userIdentity, corev1.EventTypeWarning, string("Failed"), err.Error())
-	if meta.IsStatusConditionPresentAndEqual(*conditions, "Ready", metav1.ConditionFalse) {
+	if meta.IsStatusConditionPresentAndEqual(conditions, "Ready", metav1.ConditionFalse) {
 		if err := r.Status().Update(ctx, &userIdentity); err != nil {
 			log.Error(err, "Set conditions failed")
 			r.Recorder.Event(&userIdentity, corev1.EventTypeWarning, string(UpdateFailed), "Failed to update resource status")
