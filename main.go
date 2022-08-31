@@ -153,7 +153,6 @@ func main() {
 	}
 	if err = (&controllers.UserIdentityv2Reconciler{
 		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("UserIdentityV2"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "UserIdentityV2")
@@ -161,7 +160,6 @@ func main() {
 	}
 	if err = (&controllers.UserIdentityv3Reconciler{
 		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("UserIdentityV3"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "UserIdentityV3")
@@ -169,6 +167,24 @@ func main() {
 	}
 	if err = (&identityv3.UserIdentityv3{}).SetupWebhookWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create webhook", "webhook", "UserIdentityV3")
+		os.Exit(1)
+	}
+	if err = (&controllers.UserIdentityv3Reconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "UserIdentityv3")
+		os.Exit(1)
+	}
+	if err = (&identityv3.UserIdentityv3{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "UserIdentityv3")
+		os.Exit(1)
+	}
+	if err = (&controllers.UserIdentityv2Reconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "UserIdentityv2")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

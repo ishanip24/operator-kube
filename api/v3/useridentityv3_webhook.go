@@ -54,6 +54,7 @@ var _ webhook.Validator = &UserIdentityv3{}
 func (r *UserIdentityv3) ValidateCreate() error {
 	useridentityv3log.Info("validate create", "name", r.Name)
 
+	// TODO(user): fill in your validation logic upon object creation.
 	return nil
 }
 
@@ -61,6 +62,7 @@ func (r *UserIdentityv3) ValidateCreate() error {
 func (r *UserIdentityv3) ValidateUpdate(old runtime.Object) error {
 	useridentityv3log.Info("validate update", "name", r.Name)
 
+	// TODO(user): fill in your validation logic upon object update.
 	return nil
 }
 

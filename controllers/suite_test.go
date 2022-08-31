@@ -30,13 +30,11 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	identityv1 "example.com/m/api/v1"
 	identityv2 "example.com/m/api/v2"
-	identityv3 "example.com/m/api/v3"
 	//+kubebuilder:scaffold:imports
 )
 
-// These tests use Ginkgo v2 (BDD-style Go testing framework). Refer to
+// These tests use Ginkgo (BDD-style Go testing framework). Refer to
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
@@ -47,6 +45,7 @@ var (
 
 func TestAPIs(t *testing.T) {
 	RegisterFailHandler(Fail)
+
 	RunSpecs(t, "Controller Suite")
 }
 
@@ -65,13 +64,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	err = identityv1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-
 	err = identityv2.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-
-	err = identityv3.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:scheme
